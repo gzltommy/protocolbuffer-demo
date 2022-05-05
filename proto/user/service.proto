@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package user; // 声明所在包
+
+option go_package = "github.com/gzltommy/pb-demo/proto/user"; // 声明生成的 .pb.go 文件所属包的导入路径
+
+import "proto/user/message.proto"; // 导入同包内的其他 proto 文件
+
+import "proto/article/message.proto"; // 导入其他包的 proto 文件
+
+service User {
+    rpc GetUserInfo (UserID) returns (UserInfo);
+    rpc GetUserFavArticle (UserID) returns (article.Articles.Article);
+}
+
+/*
+
+------------------------------------------------------------------------------------------------------------------------------------------
+生成的 .pb.go 文件的输出位置 3 种模式 
+------------------------------------------------------------------------------------------------------------------------------------------
+生成的 .pb.go 文件的输出位置取决于编译器标志。有 3 种输出模式：
+① paths=import 标志（该模式为默认模式），输出文件将放置在以 Go 包的导入路径命名的目录中。例如，
+protos/buzz.proto 指定了 Go 包导入路径为 example.com/project/protos/fizz ，则生成的 .pb.go 文件路径为 example.com/project/protos/fizz/buzz.pb.go 。
+
+
+② module=$PREFIX 标志，输出文件将放置在以 Go 包的导入路径命名的目录中，但指定的目录前缀将从输出文件名中删除。
+例如，protos/buzz.proto 指定了 Go 包导入路径为 example.com/project/protos/fizz 且指定 module=example.com/project，
+则生成的 .pb.go 文件路径为 protos/fizz/buzz.pb.go 。这种模式对于将生成的文件直接输出到 Go 模块很有用。
+
+
+③ paths=source_relative 标志（推荐），则输出文件将放置在与输入文件相同的相对目录中。
+
+上面的 3 中模式，通过 go_opt 选项来设定，go_opt 可以传递多个标志，例如：
+protoc --proto_path=src  --go_out=out  --go_opt=paths=source_relative   foo.proto bar/baz.proto
+
+也可以直接放在 --go_out 选项项中，如：
+protoc --proto_path=. --go_out=paths=source_relative:.  foo.proto bar/baz.proto
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------------
+Packages
+------------------------------------------------------------------------------------------------------------------------------------------
+为了生成 Go 代码，必须为每个 .proto 文件提供 Go 包的导入路径（包括那些 .proto 被生成的文件传递依赖的文件）。指定 Go 包导入路径有 2 种方式：
+① 通过在 .proto 文件中声明它（推荐），方法是，使用 go_package 选项声明 Go 包的完整导入路径。例如：
+option go_package = "example.com/project/protos/fizz";
+
+
+② 通过在调用 protoc 编译器时在命令行上指定，通过传递一个或多个 M${PROTO_FILE}=${GO_IMPORT_PATH} 标志。例如：
+protoc --proto_path=src \
+  --go_opt=Mprotos/buzz.proto=example.com/project/protos/fizz \
+  --go_opt=Mprotos/bar.proto=example.com/project/protos/foo \
+  protos/buzz.proto protos/bar.proto
+
+
+注意：
+a.推荐使用 ①，方便阅读便于理解，同时简化 protoc 的调用，如果同时使用了这 2 中方式，则 ② 优先。
+
+b.对于 go_package 选项和 M 标志，它们的值可能包括一个显式的包名，由分号“;”与导入路径分开。例如："example.com/protos/foo;package_name"。
+不鼓励这种用法，因为默认情况下，包名将以合理的方式从导入路径派生。
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------------
+package、go_package、import
+------------------------------------------------------------------------------------------------------------------------------------------
+可以看到，我们在每个 proto 文件中都声明了 package 和 option go_package，这两个声明都是包声明，到底两者有什么关系，这也是我开始比较迷惑的？
+
+我是这样理解的：
+① package 属于 proto 文件自身的范围定义，与生成的 go 代码无关，它不知道 go 代码的存在（但 go 代码的 package 名往往会取自它）。
+这个 proto 的 package 的存在是为了避免当导入其他 proto 文件时导致的文件内的命名冲突。所以，当导入非本包的 message 时，需要加 package 前缀，
+如 service.proto 文件中引用的 Article.Articles，点号选择符前为 package，后为 message。同包内的引用不需要加包名前缀。
+
+② 而 option go_package 的声明就和生成的 go 代码相关了，它定义了生成的 go 文件所属包的完整包名，所谓完整，是指相对于该项目的完整的包路径，应以项目的 Module Name 为前缀。
+如果不声明这一项会怎么样？最开始我是没有加这项声明的，后来发现，依赖这个文件的，其他包的 proto 文件，所生成的 go 代码中（注意断句），
+引入本文件所生成的 go 包时，import 的路径并不是基于项目 Module 的完整路径，而是在执行 protoc 命令时相对于 --proto_path 的包路径，
+这在 go build 时是找不到要导入的包的。这里听起来可能有点绕，建议大家亲自尝试一下。
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------------
+protoc、protoc-gen-go 
+------------------------------------------------------------------------------------------------------------------------------------------
+（1）首先 protoc 编译生成 go 代码所用的插件 protoc-gen-go 是不支持多包同时编译的，
+执行一次命令只能同时编译一个包，关于该讨论可以查看该项目的 issue#39（https://github.com/golang/protobuf/issues/39）。
+
+
+（2）其中，--proto_path 或者 -I 参数用以指定所编译源码（包括直接编译的和被导入的 proto 文件）的搜索路径，
+proto 文件中使用 import 关键字导入的路径一定是要基于 --proto_path 参数所指定的路径的。该参数如果不指定，默认为 pwd ，
+也可以指定多个以包含所有所需文件。
+
+（3）--go_out 选项是用来指定 protoc-gen-go 插件的工作方式 和 go 代码目录架构的生成位置，可以向 --go_out 传递很多参数，见 golang/protobuf 文档（https://github.com/golang/protobuf#parameters）。
+主要的两个参数为 plugins 和 paths ，代表 生成 go 代码所使用的插件 和 生成的 go 代码的目录怎样架构。--go_out 参数的写法是，参数之间用逗号隔开，
+最后加上冒号后，在冒号后面指定代码目录架构的生成位置，例如：--go_out=plugins=grpc,paths=import:. 一个完整的编译示例如下：
+protoc3 --proto_path=. --go_out=plugins=grpc,paths=source_relative:. ./proto/article/message.proto
+
+
+*/
