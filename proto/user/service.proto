@@ -3,12 +3,12 @@ syntax = "proto3";
 package user; // 声明所在包
 
 option go_package = "github.com/gzltommy/protocolbuffer-demo/proto/user;user";
-// ";" 前：表示生成的 .pb.go 文件所属包的导入路径
-// ";" 后：报名
+// ";" 前：表示生成的 .pb.go 文件所属包的导入路径，在包互相引用的时候会用到(查看 go.mod 文件中的定义)
+// ";" 后：包名
 
-import "proto/user/message.proto"; // 导入同包内的其他 proto 文件
+import "proto/user/message.proto"; // 导入同包内的其他 proto 文件（相对项目根目录）
 
-import "proto/article/message.proto"; // 导入其他包的 proto 文件
+import "proto/article/message.proto"; // 导入其他包的 proto 文件（相对项目根目录）
 
 service User {
     rpc GetUserInfo (UserID) returns (UserInfo);
