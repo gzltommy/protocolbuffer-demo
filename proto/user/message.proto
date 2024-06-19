@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package user;
 
-option go_package = "github.com/gzltommy/pb-demo/proto/user";
+option go_package = "github.com/gzltommy/protocolbuffer-demo/proto/user";
 
 message UserID {
     int64 ID = 1;
